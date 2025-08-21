@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Snake — Play Again & Again 🐍</title>
+  <style>
+    :root{
+      --bg: #0f1226;
+      --panel: #141938;
+      --accent: #8bff9b;
+      --accent-2: #7dc3ff;
+      --danger: #ff6b6b;
+      --text: #e7ecf3;
+      --muted: #9aa6b2;
+      --shadow: 0 10px 30px rgba(0,0,0,.4);
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:radial-gradient(1200px 800px at 30% 20%, #18204a, var(--bg));color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Helvetica Neue",Arial,sans-serif}
+    .wrap{display:grid;grid-template-rows:auto 1fr auto;min-height:100%;gap:14px}
+    header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px}
+    header h1{font-size:clamp(18px,3vw,22px);margin:0;font-weight:800;letter-spacing:.2px}
+    header .controls{display:flex;gap:10px;flex-wrap:wrap}
+
+    button{appearance:none;border:0;border-radius:16px;padding:10px 14px;background:linear-gradient(180deg,#2a325f,#1a2146);color:var(--text);box-shadow:var(--shadow);cursor:pointer;font-weight:700}
+    button:hover{filter:brightness(1.08)}
+    button:active{transform:translateY(1px)}
+    .primary{background:linear-gradient(180deg,#1fe36f,#10b981);color:#052b16}
+    .danger{background:linear-gradient(180deg,#ff9090,#ff6b6b);color:#3f0909}
+    .ghost{background:#1b2148;color:var(--muted)}
+
+    .board-wrap{display:grid;place-items:center;padding:0 16px}
+    .board{position:relative;aspect-ratio:1/1;width:min(92vw,700px);border-radius:24px;box-shadow:var(--shadow);background:linear-gradient(180deg,#0b0f2b,#0e1335)}
+    canvas{width:100%;height:100%;display:block;border-radius:24px}
+
+    .hud{position:absolute;inset:0;pointer-events:none}
+    .top-left,.top-right,.bottom-center{position:absolute;padding:10px 12px;border-radius:14px;background:rgba(20,25,56,.55);backdrop-filter:blur(6px);box-shadow:var(--shadow)}
+    .top-left{top:12px;left:12px}
+    .top-right{top:12px;right:12px}
+    .bottom-center{left:50%;transform:translateX(-50%);bottom:12px;display:flex;gap:8px}
+    .label{font-size:12px;color:var(--muted)}
+    .value{font-weight:800;font-size:18px}
+
+    .toast{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);padding:18px 22px;border-radius:18px;background:rgba(8,10,30,.8);backdrop-filter:blur(8px);text-align:center;pointer-events:auto}
+    .toast h2{margin:0 0 10px;font-size:clamp(20px,4vw,30px)}
+    .toast p{margin:6px 0;color:var(--muted)}
+    .toast .row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:10px}
+
+    /* Touch controls */
+    .dpad{position:absolute;bottom:14px;left:14px;display:grid;grid-template-columns:60px 60px 60px;grid-template-rows:60px 60px 60px;gap:8px;opacity:.9}
+    .dpad button{width:60px;height:60px;border-radius:16px;background:rgba(27,33,72,.8);color:var(--text);font-size:18px;pointer-events:auto}
+    .dpad .blank{background:transparent;box-shadow:none}
+
+    footer{padding:10px 16px;color:var(--muted);display:flex;justify-content:center}
+    a {color: var(--accent)}
+
+    @media (max-width:520px){
+      .dpad{grid-template-columns:56px 56px 56px;grid-template-rows:56px 56px 56px}
+      .dpad button{width:56px;height:56px}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>🐍 Snake — Infinite Fun</h1>
+      <div class="controls">
+        <button id="btn-start" class="primary">Start / Pause (Space)</button>
+        <button id="btn-restart" class="ghost">Restart (R)</button>
+        <button id="btn-mode" class="ghost" title="Wall mode">Mode: <span id="mode-label">Wrap</span></button>
+        <button id="btn-speed" class="ghost" title="Game speed">Speed: <span id="speed-label">Normal</span></button>
+        <button id="btn-sound" class="ghost" title="Toggle sound">Sound: <span id="sound-label">On</span></button>
+      </div>
+    </header>
+
+    <div class="board-wrap">
+      <div class="board" id="board">
+        <canvas id="game" width="600" height="600" aria-label="Snake game canvas" role="img"></canvas>
+        <div class="hud">
+          <div class="top-left">
+            <div class="label">Score</div>
+            <div class="value" id="score">0</div>
+          </div>
+          <div class="top-right">
+            <div class="label">High</div>
+            <div class="value" id="high">0</div>
+          </div>
+
+          <!-- Touch D-Pad -->
+          <div class="dpad" id="dpad" aria-hidden="true">
+            <button class="blank" disabled></button>
+            <button data-dir="up">▲</button>
+            <button class="blank" disabled></button>
+            <button data-dir="left">◀</button>
+            <button data-dir="center" id="btn-touch-start">⏯</button>
+            <button data-dir="right">▶</button>
+            <button class="blank" disabled></button>
+            <button data-dir="down">▼</button>
+            <button class="blank" disabled></button>
+          </div>
+
+          <div class="bottom-center">
+            <button id="btn-help">How to Play</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      Built with ❤️ — Use arrow keys / WASD on desktop; D‑pad on mobile. Eat food, avoid your tail. Golden food = bonus points. Obstacles appear as you level up!
+    </footer>
+  </div>
+
+  <template id="tpl-help">
+    <div class="toast" role="dialog" aria-modal="true">
+      <h2>How to Play</h2>
+      <p>Use <strong>Arrow Keys</strong> or <strong>W/A/S/D</strong> to move. On mobile, use the on‑screen D‑pad.</p>
+      <p>Eat food to grow. <strong>Golden</strong> food gives extra points. Avoid running into yourself. In <em>Wall</em> mode, hitting the wall ends the game; in <em>Wrap</em> mode you appear on the opposite side.</p>
+      <div class="row">
+        <button data-action="close" class="ghost">Close</button>
+        <button data-action="restart" class="primary">Restart</button>
+      </div>
+    </div>
+  </template>
+
+  <template id="tpl-gameover">
+    <div class="toast" role="dialog" aria-modal="true">
+      <h2>Game Over 💥</h2>
+      <p>Your score: <strong id="final-score">0</strong></p>
+      <p id="new-high" style="display:none;color:var(--accent)"><strong>New High Score! 🎉</strong></p>
+      <div class="row">
+        <button data-action="restart" class="primary">Play Again</button>
+        <button data-action="close" class="ghost">Close</button>
+      </div>
+    </div>
+  </template>
+
+  <script>
+  ;(() => {
+    const canvas = document.getElementById('game')
+    const ctx = canvas.getContext('2d')
+    const scoreEl = document.getElementById('score')
+    const highEl = document.getElementById('high')
+    const btnStart = document.getElementById('btn-start')
+    const btnRestart = document.getElementById('btn-restart')
+    const btnHelp = document.getElementById('btn-help')
+    const btnMode = document.getElementById('btn-mode')
+    const modeLabel = document.getElementById('mode-label')
+    const btnSpeed = document.getElementById('btn-speed')
+    const speedLabel = document.getElementById('speed-label')
+    const btnSound = document.getElementById('btn-sound')
+    const soundLabel = document.getElementById('sound-label')
+    const board = document.getElementById('board')
+
+    // Grid config
+    const COLS = 30
+    const ROWS = 30
+    const CELL = canvas.width / COLS
+
+    const SFX = {
+      on: true,
+      eat: new Audio(),
+      over: new Audio()
+    }
+    // Very small bleeps (base64 to keep single-file). Volume gentle.
+    SFX.eat.src = 'data:audio/mp3;base64,//uQZAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcGxheQAAAAAA'
+    SFX.over.src = 'data:audio/mp3;base64,//uQZAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcGxheQAAAAAA'
+    SFX.eat.volume = 0.15; SFX.over.volume = 0.2
+
+    const rnd = (n) => Math.floor(Math.random()*n)
+    const key = (r,c) => `${r},${c}`
+
+    const store = {
+      get high(){ return Number(localStorage.getItem('snake.high')||0) },
+      set high(v){ localStorage.setItem('snake.high', String(v)) }
+    }
+
+    // Game state
+    const initial = () => ({
+      dir: {r:0,c:1}, nextDir: {r:0,c:1},
+      snake: [{r:15,c:10},{r:15,c:9},{r:15,c:8}],
+      cells: new Set(['15,10','15,9','15,8']),
+      food: {r: 10, c: 20, kind: 'normal'},
+      obstacles: [],
+      score: 0,
+      running: false,
+      wrap: true,
+      speed: 'normal', // slow, normal, fast
+      level: 1,
+      tickMs: 120, // will be adjusted by speed
+      acc: 0,
+      last: 0,
+    })
+
+    let G = initial()
+
+    const SPEED_MAP = { slow: 160, normal: 120, fast: 90 }
+
+    function placeFood(){
+      let pos
+      do {
+        pos = { r: rnd(ROWS), c: rnd(COLS) }
+      } while (G.cells.has(key(pos.r,pos.c)) || G.obstacles.some(o=>o.r===pos.r&&o.c===pos.c))
+      const special = Math.random() < Math.min(0.08 + G.level*0.01, 0.25)
+      G.food = { ...pos, kind: special ? 'gold' : 'normal' }
+    }
+
+    function addObstacle(){
+      // Add a short wall as level increases
+      if (G.level % 2 !== 0) return
+      const len = Math.min(3 + Math.floor(G.level/2), 7)
+      let base
+      let horiz = Math.random() < 0.5
+      let tries = 0
+      do {
+        tries++
+        base = { r: rnd(ROWS), c: rnd(COLS) }
+        const segs = []
+        for (let i=0;i<len;i++){
+          const r = base.r + (horiz?0:i)
+          const c = base.c + (horiz?i:0)
+          if (r>=ROWS||c>=COLS) { segs.length=0; break }
+          segs.push({r,c})
+        }
+        if (segs.length && segs.every(s=>!G.cells.has(key(s.r,s.c)))){
+          G.obstacles.push(...segs)
+          break
+        }
+      } while (tries < 20)
+    }
+
+    function setSpeed(label){
+      G.speed = label
+      G.tickMs = SPEED_MAP[label]
+      speedLabel.textContent = label[0].toUpperCase()+label.slice(1)
+    }
+
+    function setWrap(on){
+      G.wrap = on
+      modeLabel.textContent = on ? 'Wrap' : 'Wall'
+    }
+
+    function restart(){
+      G = initial()
+      setSpeed(G.speed)
+      setWrap(G.wrap)
+      scoreEl.textContent = '0'
+      highEl.textContent = store.high
+      placeFood()
+      clearOverlay()
+      draw(0)
+    }
+
+    function toggleRun(){
+      G.running = !G.running
+      if (G.running){
+        G.last = performance.now()
+        requestAnimationFrame(loop)
+      }
+    }
+
+    function gameOver(){
+      G.running = false
+      if (SFX.on) SFX.over.play().catch(()=>{})
+      const final = G.score
+      const wasHigh = final > store.high
+      if (wasHigh) store.high = final
+      showGameOver(final, wasHigh)
+      highEl.textContent = store.high
+    }
+
+    function move(){
+      const {r:dr,c:dc} = G.nextDir
+      // prevent reversing directly
+      if (G.snake.length>1){
+        const head = G.snake[0]
+        const neck = G.snake[1]
+        if (head.r + dr === neck.r && head.c + dc === neck.c){
+          // keep current dir
+        } else {
+          G.dir = {r:dr,c:dc}
+        }
+      } else {
+        G.dir = {r:dr,c:dc}
+      }
+
+      let nr = G.snake[0].r + G.dir.r
+      let nc = G.snake[0].c + G.dir.c
+
+      if (G.wrap){
+        if (nr<0) nr = ROWS-1; if (nr>=ROWS) nr = 0
+        if (nc<0) nc = COLS-1; if (nc>=COLS) nc = 0
+      } else {
+        if (nr<0 || nr>=ROWS || nc<0 || nc>=COLS) return gameOver()
+      }
+
+      const newHeadKey = key(nr,nc)
+      // Check self or obstacle collision
+      if (G.cells.has(newHeadKey) || G.obstacles.some(o=>o.r===nr&&o.c===nc)){
+        return gameOver()
+      }
+
+      const ate = (nr===G.food.r && nc===G.food.c)
+
+      G.snake.unshift({r:nr,c:nc})
+      G.cells.add(newHeadKey)
+
+      if (ate){
+        if (SFX.on) SFX.eat.play().catch(()=>{})
+        const gain = (G.food.kind==='gold') ? 30 : 10
+        G.score += gain
+        scoreEl.textContent = G.score
+        placeFood()
+
+        // level up every 50 points
+        const newLevel = Math.floor(G.score/50)+1
+        if (newLevel > G.level){
+          G.level = newLevel
+          addObstacle()
+          // tiny speed up with level (cap)
+          G.tickMs = Math.max(60, G.tickMs - 4)
+        }
+      } else {
+        const tail = G.snake.pop()
+        G.cells.delete(key(tail.r, tail.c))
+      }
+    }
+
+    function roundedRect(x,y,w,h,r){
+      ctx.beginPath()
+      ctx.moveTo(x+r,y)
+      ctx.arcTo(x+w,y,x+w,y+h,r)
+      ctx.arcTo(x+w,y+h,x,y+h,r)
+      ctx.arcTo(x,y+h,x,y,r)
+      ctx.arcTo(x,y,x+w,y,r)
+      ctx.closePath()
+    }
+
+    function drawCell(r,c,fill,shadow=true){
+      const pad = 2
+      const x = c*CELL+pad, y = r*CELL+pad, s = CELL-pad*2
+      if (shadow){
+        ctx.shadowColor = 'rgba(0,0,0,.35)'
+        ctx.shadowBlur = 8
+      } else {
+        ctx.shadowBlur = 0
+      }
+      const radius = Math.min(10, s*0.28)
+      roundedRect(x,y,s,s,radius)
+      const g = ctx.createLinearGradient(x,y,x,y+s)
+      g.addColorStop(0, fill)
+      g.addColorStop(1, '#0c1234')
+      ctx.fillStyle = g
+      ctx.fill()
+      ctx.shadowBlur = 0
+    }
+
+    function drawFood(){
+      const {r,c,kind} = G.food
+      const color = kind==='gold' ? '#ffd54a' : '#7df57d'
+      drawCell(r,c,color)
+      // sparkle
+      ctx.save()
+      ctx.globalAlpha = .35
+      const cx = c*CELL + CELL/2
+      const cy = r*CELL + CELL/2
+      const rad = CELL*0.38
+      ctx.beginPath(); ctx.arc(cx,cy,rad,0,Math.PI*2)
+      const g = ctx.createRadialGradient(cx,cy,rad*0.1,cx,cy,rad)
+      g.addColorStop(0, color)
+      g.addColorStop(1, 'transparent')
+      ctx.fillStyle = g
+      ctx.fill()
+      ctx.restore()
+    }
+
+    function drawObstacles(){
+      ctx.save()
+      for (const o of G.obstacles){
+        drawCell(o.r,o.c,'#7280ff',false)
+      }
+      ctx.restore()
+    }
+
+    function drawSnake(){
+      const len = G.snake.length
+      for (let i=0;i<len;i++){
+        const seg = G.snake[i]
+        const hue = 130 + (i/len)*40 // subtle tail gradient
+        drawCell(seg.r, seg.c, `hsl(${hue} 80% 60%)`)
+      }
+      // eyes
+      const head = G.snake[0]
+      const cx = head.c*CELL + CELL/2
+      const cy = head.r*CELL + CELL/2
+      ctx.fillStyle = '#0a0e24'
+      const eyeOffset = 6
+      if (G.dir.r===0){
+        ctx.beginPath(); ctx.arc(cx + Math.sign(G.dir.c)*eyeOffset, cy-5, 3, 0, Math.PI*2); ctx.fill()
+        ctx.beginPath(); ctx.arc(cx + Math.sign(G.dir.c)*eyeOffset, cy+5, 3, 0, Math.PI*2); ctx.fill()
+      } else {
+        ctx.beginPath(); ctx.arc(cx-5, cy + Math.sign(G.dir.r)*eyeOffset, 3, 0, Math.PI*2); ctx.fill()
+        ctx.beginPath(); ctx.arc(cx+5, cy + Math.sign(G.dir.r)*eyeOffset, 3, 0, Math.PI*2); ctx.fill()
+      }
+    }
+
+    function drawGridBG(){
+      ctx.clearRect(0,0,canvas.width,canvas.height)
+      // subtle grid
+      ctx.save()
+      ctx.globalAlpha = .2
+      ctx.strokeStyle = '#1b2350'
+      for (let r=0;r<=ROWS;r++){
+        ctx.beginPath(); ctx.moveTo(0, r*CELL); ctx.lineTo(canvas.width, r*CELL); ctx.stroke()
+      }
+      for (let c=0;c<=COLS;c++){
+        ctx.beginPath(); ctx.moveTo(c*CELL, 0); ctx.lineTo(c*CELL, canvas.height); ctx.stroke()
+      }
+      ctx.restore()
+    }
+
+    function draw(ts){
+      drawGridBG()
+      drawObstacles()
+      drawFood()
+      drawSnake()
+    }
+
+    function loop(ts){
+      if (!G.running) return
+      const dt = ts - G.last
+      G.last = ts
+      G.acc += dt
+      while (G.acc >= G.tickMs){
+        move()
+        G.acc -= G.tickMs
+      }
+      draw(ts)
+      requestAnimationFrame(loop)
+    }
+
+    // UI overlays
+    function showOverlay(node){
+      clearOverlay()
+      board.appendChild(node)
+    }
+    function clearOverlay(){
+      for (const el of board.querySelectorAll('.toast')) el.remove()
+    }
+
+    function showHelp(){
+      const tpl = document.getElementById('tpl-help').content.cloneNode(true)
+      const toast = tpl.querySelector('.toast')
+      toast.querySelector('[data-action="close"]').onclick = clearOverlay
+      toast.querySelector('[data-action="restart"]').onclick = () => { clearOverlay(); restart(); toggleRun() }
+      showOverlay(toast)
+    }
+
+    function showGameOver(score, newHigh){
+      const tpl = document.getElementById('tpl-gameover').content.cloneNode(true)
+      const toast = tpl.querySelector('.toast')
+      toast.querySelector('#final-score').textContent = score
+      if (newHigh) toast.querySelector('#new-high').style.display = 'block'
+      toast.querySelector('[data-action="close"]').onclick = clearOverlay
+      toast.querySelector('[data-action="restart"]').onclick = () => { clearOverlay(); restart(); toggleRun() }
+      showOverlay(toast)
+    }
+
+    // Input handlers
+    const DIRS = {
+      ArrowUp: {r:-1,c:0}, KeyW: {r:-1,c:0},
+      ArrowDown: {r:1,c:0}, KeyS: {r:1,c:0},
+      ArrowLeft: {r:0,c:-1}, KeyA: {r:0,c:-1},
+      ArrowRight: {r:0,c:1}, KeyD: {r:0,c:1}
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code in DIRS){ G.nextDir = DIRS[e.code]; e.preventDefault() }
+      if (e.code==='Space'){ toggleRun(); e.preventDefault() }
+      if (e.code==='KeyR'){ restart(); e.preventDefault() }
+    })
+
+    // Buttons
+    btnStart.onclick = toggleRun
+    btnRestart.onclick = restart
+    btnHelp.onclick = showHelp
+
+    btnMode.onclick = () => { setWrap(!G.wrap) }
+    btnSpeed.onclick = () => {
+      const order = ['slow','normal','fast']
+      const idx = (order.indexOf(G.speed)+1)%order.length
+      setSpeed(order[idx])
+    }
+    btnSound.onclick = () => { SFX.on = !SFX.on; soundLabel.textContent = SFX.on ? 'On':'Off' }
+
+    // Touch controls
+    const dpad = document.getElementById('dpad')
+    dpad.querySelectorAll('button[data-dir]').forEach(btn => {
+      const dir = btn.getAttribute('data-dir')
+      btn.addEventListener('click', () => {
+        if (dir==='center'){ toggleRun(); return }
+        const map = {up:'ArrowUp',down:'ArrowDown',left:'ArrowLeft',right:'ArrowRight'}
+        const code = map[dir]
+        if (code){ G.nextDir = DIRS[code] }
+      })
+    })
+    document.getElementById('btn-touch-start').addEventListener('click', toggleRun)
+
+    // Init
+    highEl.textContent = store.high
+    setSpeed('normal')
+    setWrap(true)
+    placeFood()
+    draw(0)
+  })()
+  </script>
+</body>
+</html>
